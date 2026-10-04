@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Search, ChevronDown, Download, MoreHorizontal, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Loader2 } from "lucide-react";
 import { generateCertificate } from "../certificates/generateCertificate";
 import { supabase } from "@/lib/supabase";
@@ -34,11 +34,7 @@ export function ParticipantTable() {
   const [formData, setFormData] = useState<Partial<ParticipantDB>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    fetchParticipants();
-  }, []);
-
-  const fetchParticipants = async () => {
+  const fetchParticipants = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("attendance")
@@ -51,7 +47,54 @@ export function ParticipantTable() {
       setParticipants(data || []);
     }
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchParticipants();
+
+    const channel = supabase
+      .channel("attendance-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = payload.old.id;
+            if (deletedId === undefined) {
+              void fetchParticipants();
+              return;
+            }
+
+            setParticipants((current) =>
+              current.filter((participant) => String(participant.id) !== String(deletedId))
+            );
+            return;
+          }
+
+          const participant = payload.new as ParticipantDB;
+          setParticipants((current) => {
+            const existingIndex = current.findIndex(
+              (item) => String(item.id) === String(participant.id)
+            );
+
+            if (existingIndex === -1) return [participant, ...current];
+
+            const updated = [...current];
+            updated[existingIndex] = participant;
+            return updated;
+          });
+        }
+      )
+      .subscribe((status, error) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("Attendance realtime subscription failed:", error);
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchParticipants]);
 
   const handleOpenAdd = () => {
     setEditingId(null);
