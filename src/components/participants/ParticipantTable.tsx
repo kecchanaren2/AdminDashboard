@@ -20,10 +20,13 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
 }
 
+const PAGE_SIZE = 30;
+
 export function ParticipantTable() {
   const [participants, setParticipants] = useState<ParticipantDB[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -133,6 +136,15 @@ export function ParticipantTable() {
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="w-full relative min-h-[400px]">
       {/* Top Controls */}
@@ -144,7 +156,7 @@ export function ParticipantTable() {
             placeholder="Search name, NIM/NIP, email..."
             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
           />
         </div>
 
@@ -185,7 +197,7 @@ export function ParticipantTable() {
                 </td>
               </tr>
             ) : (
-              filtered.map((p) => {
+              paginated.map((p) => {
                 const nimDisplay = p["NIM/NIP"] || p.nim_nip || "-";
                 return (
                   <tr key={p.id} className="bg-white hover:bg-slate-50/50 transition-colors">
@@ -257,16 +269,57 @@ export function ParticipantTable() {
       {/* Pagination Footer */}
       <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white rounded-b-2xl">
         <span className="text-[11px] font-medium text-slate-400">
-          Showing {filtered.length} entries
+          Showing{" "}
+          <span className="text-slate-700 font-semibold">
+            {filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)}
+          </span>
+          {" "}of{" "}
+          <span className="text-slate-700 font-semibold">{filtered.length}</span>{" "}entries
         </span>
-        <div className="flex items-center gap-2">
-          <button className="p-1 border border-slate-200 rounded-md text-slate-400 hover:bg-slate-50 transition-colors">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="p-1.5 border border-slate-200 rounded-md text-slate-400 hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-[11px] font-medium text-slate-500">
-            Page <span className="text-slate-900 font-bold">1</span> of 1
-          </span>
-          <button className="p-1 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 transition-colors">
+
+          {/* Page number pills */}
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((n) => n === 1 || n === totalPages || Math.abs(n - safePage) <= 1)
+              .reduce<(number | "...")[]>((acc, n, idx, arr) => {
+                if (idx > 0 && typeof arr[idx - 1] === "number" && (n as number) - (arr[idx - 1] as number) > 1) {
+                  acc.push("...");
+                }
+                acc.push(n);
+                return acc;
+              }, [])
+              .map((item, idx) =>
+                item === "..." ? (
+                  <span key={`ellipsis-${idx}`} className="px-1 text-[11px] text-slate-400">…</span>
+                ) : (
+                  <button
+                    key={item}
+                    onClick={() => setCurrentPage(item as number)}
+                    className={`min-w-[28px] h-7 rounded-md text-[11px] font-semibold transition-colors ${
+                      safePage === item
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "border border-slate-200 text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+          </div>
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="p-1.5 border border-slate-200 rounded-md text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -318,12 +371,19 @@ export function ParticipantTable() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Peran / Role</label>
-                <input
-                  type="text" required placeholder="e.g. Peserta, Panitia"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-slate-50"
-                  value={formData.peran || ""}
-                  onChange={(e) => setFormData({ ...formData, peran: e.target.value })}
-                />
+                <div className="relative">
+                  <select
+                    required
+                    className="w-full appearance-none px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white text-slate-700 cursor-pointer pr-9"
+                    value={formData.peran || ""}
+                    onChange={(e) => setFormData({ ...formData, peran: e.target.value })}
+                  >
+                    <option value="" disabled>-- Pilih Peran --</option>
+                    <option value="Peserta Dosen">Peserta Dosen</option>
+                    <option value="Peserta Tendik">Peserta Tendik</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Waktu Date</label>
