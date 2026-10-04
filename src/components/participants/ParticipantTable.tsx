@@ -1,0 +1,361 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { Search, ChevronDown, Download, MoreHorizontal, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Loader2 } from "lucide-react";
+import { generateCertificate } from "../certificates/generateCertificate";
+import { supabase } from "@/lib/supabase";
+
+export type ParticipantDB = {
+  id: string | number;
+  name: string;
+  email: string;
+  peran: string;
+  waktu_date: string;
+  "NIM/NIP"?: string | null;
+  nim_nip?: string | null;
+};
+
+function getInitials(name: string) {
+  if (!name) return "??";
+  return name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
+}
+
+export function ParticipantTable() {
+  const [participants, setParticipants] = useState<ParticipantDB[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Modal states
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | number | null>(null);
+  const [formData, setFormData] = useState<Partial<ParticipantDB>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetchParticipants();
+  }, []);
+
+  const fetchParticipants = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching participants:", error);
+    } else {
+      setParticipants(data || []);
+    }
+    setLoading(false);
+  };
+
+  const handleOpenAdd = () => {
+    setEditingId(null);
+    setFormData({
+      name: "",
+      "NIM/NIP": "",
+      email: "",
+      peran: "",
+      waktu_date: new Date().toISOString().split("T")[0],
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (p: ParticipantDB) => {
+    setEditingId(p.id);
+    setFormData({
+      ...p,
+      "NIM/NIP": p["NIM/NIP"] || p.nim_nip || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    
+    // Ensure NIM/NIP is saved to the column named "NIM/NIP"
+    const payload = {
+      name: formData.name,
+      "NIM/NIP": formData["NIM/NIP"] || null,
+      email: formData.email,
+      peran: formData.peran,
+      waktu_date: formData.waktu_date,
+    };
+
+    if (editingId) {
+      // Update
+      const { error } = await supabase
+        .from("attendance")
+        .update(payload)
+        .eq("id", editingId);
+        
+      if (error) console.error("Error updating:", error);
+    } else {
+      // Insert
+      const { error } = await supabase
+        .from("attendance")
+        .insert([payload]);
+        
+      if (error) console.error("Error inserting:", error);
+    }
+    
+    setIsSaving(false);
+    setIsModalOpen(false);
+    fetchParticipants(); // Refresh table
+  };
+
+  const handleDelete = async (id: string | number) => {
+    if (confirm("Are you sure you want to delete this participant?")) {
+      const { error } = await supabase.from("attendance").delete().eq("id", id);
+      if (error) console.error("Error deleting:", error);
+      else fetchParticipants();
+    }
+  };
+
+  const handleGenerateCertificate = async (participant: ParticipantDB) => {
+    // Generate cert matching old structure logic
+    const certData = {
+      name: participant.name,
+      institution: participant.peran,
+    };
+    await generateCertificate(certData as any);
+  };
+
+  const filtered = participants.filter((p) => {
+    const nimVal = p["NIM/NIP"] || p.nim_nip || "";
+    return (
+      p.name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.email?.toLowerCase().includes(search.toLowerCase()) ||
+      nimVal.toLowerCase().includes(search.toLowerCase()) ||
+      p.peran?.toLowerCase().includes(search.toLowerCase())
+    );
+  });
+
+  return (
+    <div className="w-full relative min-h-[400px]">
+      {/* Top Controls */}
+      <div className="flex justify-between items-center p-4 border-b border-slate-100">
+        <div className="relative w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search name, NIM/NIP, email..."
+            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <button 
+          onClick={handleOpenAdd}
+          className="flex items-center gap-2 px-4 py-2 bg-[#F97316] hover:bg-[#EA580C] text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add</span>
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-white">
+              <th className="px-6 py-4 font-bold">Nama</th>
+              <th className="px-6 py-4 font-bold">NIM / NIP</th>
+              <th className="px-6 py-4 font-bold">Role / Peran</th>
+              <th className="px-6 py-4 font-bold">Waktu Date</th>
+              <th className="px-6 py-4 font-bold">Status</th>
+              <th className="px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                  Loading data from Supabase...
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm">
+                  No participants found.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((p) => {
+                const nimDisplay = p["NIM/NIP"] || p.nim_nip || "-";
+                return (
+                  <tr key={p.id} className="bg-white hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-xs shrink-0">
+                          {getInitials(p.name)}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm text-slate-900">{p.name}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {p.email} <span className="mx-1">•</span> ID: {p.id}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-1 rounded">
+                        {nimDisplay}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{p.peran}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-sm text-slate-900">Attendance Data</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">{p.waktu_date}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        Attended
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleGenerateCertificate(p)}
+                          className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-md text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                          title="Download Certificate"
+                        >
+                          <Download className="w-3.5 h-3.5 text-slate-400" />
+                          Certificate
+                        </button>
+                        
+                        {/* Action Menu (Edit / Delete) */}
+                        <button 
+                          onClick={() => handleOpenEdit(p)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                          title="Edit Participant"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(p.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                          title="Delete Participant"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Footer */}
+      <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white rounded-b-2xl">
+        <span className="text-[11px] font-medium text-slate-400">
+          Showing {filtered.length} entries
+        </span>
+        <div className="flex items-center gap-2">
+          <button className="p-1 border border-slate-200 rounded-md text-slate-400 hover:bg-slate-50 transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-[11px] font-medium text-slate-500">
+            Page <span className="text-slate-900 font-bold">1</span> of 1
+          </span>
+          <button className="p-1 border border-slate-200 rounded-md text-slate-600 hover:bg-slate-50 transition-colors">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Modal for Add / Edit */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
+              <h3 className="font-semibold text-lg text-slate-900">
+                {editingId ? "Edit Participant" : "Add New Participant"}
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
+                <input
+                  type="text" required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  value={formData.name || ""}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">NIM / NIP</label>
+                <input
+                  type="text" placeholder="e.g. 2108561001"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+                  value={formData["NIM/NIP"] || formData.nim_nip || ""}
+                  onChange={(e) => setFormData({ ...formData, "NIM/NIP": e.target.value, nim_nip: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
+                <input
+                  type="email" required
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  value={formData.email || ""}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Peran / Role</label>
+                <input
+                  type="text" required placeholder="e.g. Peserta, Panitia"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-slate-50"
+                  value={formData.peran || ""}
+                  onChange={(e) => setFormData({ ...formData, peran: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Waktu Date</label>
+                <input
+                  type="text" required placeholder="e.g. 2026-10-04 08:00:00"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  value={formData.waktu_date || ""}
+                  onChange={(e) => setFormData({ ...formData, waktu_date: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {editingId ? "Save Changes" : "Add Participant"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
