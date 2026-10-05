@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Search, ChevronDown, Download, MoreHorizontal, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Loader2 } from "lucide-react";
+import { Search, ChevronDown, Download, MoreHorizontal, ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Loader2, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { generateCertificate } from "../certificates/generateCertificate";
 import { supabase } from "@/lib/supabase";
 
@@ -27,6 +27,46 @@ export function ParticipantTable() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+
+  type SortField = "name" | "nim" | "peran" | "waktu_date";
+  type SortOrder = "asc" | "desc" | null;
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>(null);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortOrder === "asc") setSortOrder("desc");
+      else if (sortOrder === "desc") {
+        setSortField(null);
+        setSortOrder(null);
+      }
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const renderSortHeader = (label: string, field: SortField) => {
+    return (
+      <th 
+        className="px-6 py-4 font-bold cursor-pointer hover:bg-slate-50 transition-colors select-none group" 
+        onClick={() => handleSort(field)}
+      >
+        <div className="flex items-center gap-1.5">
+          {label}
+          {sortField === field ? (
+            sortOrder === "asc" ? (
+              <ArrowUp className="w-3 h-3 text-indigo-500" />
+            ) : (
+              <ArrowDown className="w-3 h-3 text-indigo-500" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3 h-3 text-slate-300 group-hover:text-slate-400" />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -177,6 +217,29 @@ export function ParticipantTable() {
       nimVal.toLowerCase().includes(search.toLowerCase()) ||
       p.peran?.toLowerCase().includes(search.toLowerCase())
     );
+  }).sort((a, b) => {
+    if (!sortField || !sortOrder) return 0;
+    
+    let valA = "";
+    let valB = "";
+    
+    if (sortField === "name") {
+      valA = a.name?.toLowerCase() || "";
+      valB = b.name?.toLowerCase() || "";
+    } else if (sortField === "nim") {
+      valA = (a["NIM/NIP"] || a.nim_nip || "").toLowerCase();
+      valB = (b["NIM/NIP"] || b.nim_nip || "").toLowerCase();
+    } else if (sortField === "peran") {
+      valA = a.peran?.toLowerCase() || "";
+      valB = b.peran?.toLowerCase() || "";
+    } else if (sortField === "waktu_date") {
+      valA = a.waktu_date || "";
+      valB = b.waktu_date || "";
+    }
+    
+    if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+    if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+    return 0;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -217,10 +280,10 @@ export function ParticipantTable() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-white">
-              <th className="px-6 py-4 font-bold">Nama</th>
-              <th className="px-6 py-4 font-bold">NIM / NIP</th>
-              <th className="px-6 py-4 font-bold">Role / Peran</th>
-              <th className="px-6 py-4 font-bold">Waktu Date</th>
+              {renderSortHeader("Nama", "name")}
+              {renderSortHeader("NIM / NIP", "nim")}
+              {renderSortHeader("Role / Peran", "peran")}
+              {renderSortHeader("Waktu Date", "waktu_date")}
               <th className="px-6 py-4 font-bold">Status</th>
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
